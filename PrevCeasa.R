@@ -2,6 +2,7 @@ library(tidymodels)
 library(modeltime)
 library(tidyverse)
 library(lubridate)
+library(timetk)
 library(readxl)
 library(parsnip)
 library(datawizard)
@@ -19,28 +20,42 @@ data <- Dados_Ceasa_Preco %>% dplyr::select(id,date,value) %>%
 
 # AED -----
 
-graph <- function(id_i ){
+itens_abc <- c(24,8,27,34,44,33,16)
 
-data %>%
-  group_by(id) %>%
-  filter(id == id_i) %>%
-  plot_time_series(
-    .date_var    = date,
-    .value       = value
-  )
-
+EDA <- function(data,id_i){ 
+  dt <- data %>%
+    dplyr::group_by(id) %>%
+    dplyr::filter(id == id_i)
+  
+  n <- length(plyr::count(id_i)$x)
+  
+  if (n > 3) {
+    x = 3
+  } else {
+    x = 1
+  }
+  
+  graph <-  dt %>%
+    timetk::plot_time_series(.facet_ncol = x,
+                             .date_var    = date,
+                             .value       = value)
+  
+  
+  table <-  dt %>%  datawizard::describe_distribution()
+  
+  anomaly <- dt %>% plot_anomaly_diagnostics(date,
+                                            value,
+                                            .facet_ncol = x)
+  
+  return(list(
+    table <- table,
+    garph <- graph,
+    anomaly <- anomaly
+  ))  
+  
 }
 
-graph(24)
-
-table <- function(id_i ){
-  
-data %>% filter(id == id_i) %>%  describe_distribution()
-  
-}
-
-table(24)
-
+EDA(data,24)
 
 ##### models -----
 
@@ -62,9 +77,9 @@ splits <- df %>% initial_time_split(prop = 0.88)
   
   ## NNETAR (Neural Network AutoRegression) ----
   
-  model_fit_nnetar <- nnetar_reg(num_networks = 100) %>%
+  model_fit_nnetar <- nnetar_reg(num_networks = 33,penalty = 0.1337) %>%
     set_engine("nnetar") %>%
-    fit(value ~ date + month(date), training(splits))
+    fit(value ~ date + month(date) + year(date) + semester(date), training(splits))
 
   ## Prophet ----
   
@@ -73,7 +88,7 @@ splits <- df %>% initial_time_split(prop = 0.88)
                                      seasonality_yearly = F,changepoint_range = 0.77
                                       ) %>%
     set_engine("prophet_xgboost")  %>%
-    fit(value ~ date + month(date) + year(date), training(splits))
+    fit(value ~ date + month(date) + day(date) + semester(date) +year(date), training(splits))
 
 
   
@@ -91,7 +106,12 @@ value_table <- calibration_table %>%
   modeltime_forecast(
     new_data    = testing(splits),
     actual_data = df
-  )
+  ) %>% select(.model_id,.model_id,
+               .model_desc,.key,.index,.value,
+               .conf_lo,.conf_hi) %>% mutate(.model_id = product_id , 
+                                             .value = round(.value,2),
+                                             .conf_lo = round(.conf_lo,2),
+                                             .conf_hi = round(.conf_hi,2))
   
 graph <- value_table %>%
   plot_modeltime_forecast(
@@ -174,7 +194,7 @@ refit_tbl <- Product[[2]] %>%
   modeltime_refit(data = df)
 
 value_prev <- refit_tbl %>%
-  modeltime_forecast(h = "4 month", actual_data = df)
+  modeltime_forecast(h = "6 month", actual_data = df)
 
 graph <- value_prev %>%
   plot_modeltime_forecast(
@@ -188,4 +208,50 @@ return(list(refit_tbl,
 
 }
 
-
+ABACATE_Prev<-Forcast(ABACATE,1)
+ABACAXI_Prev<-Forcast(ABACAXI,2)
+ABOBORA_Prev<-Forcast(ABOBORA,3)
+ABOBRINHA_Prev<-Forcast(ABOBRINHA,4)
+ALFACE_Prev<-Forcast(ALFACE,5)
+ALHO_Prev<-Forcast(ALHO,6)
+BANANA_NANICA_Prev<-Forcast(BANANA_NANICA,7)
+BANANA_PRATA_Prev<-Forcast(BANANA_PRATA,8)
+BATATA_Prev<-Forcast(BATATA,9)
+BATATA_DOCE_Prev<-Forcast(BATATA_DOCE,10)
+BERINJELA_Prev<-Forcast(BERINJELA,11)
+BETERRABA_Prev<-Forcast(BETERRABA,12)
+BROCOLO_Prev<-Forcast(BROCOLO,13)
+CARA_Prev<-Forcast(CARA,14)
+CEBOLA_Prev<-Forcast(CEBOLA,15)
+CENOURA_Prev<-Forcast(CENOURA,16)
+CHUCHU_Prev<-Forcast(CHUCHU,17)
+COCO_VERDE_Prev<-Forcast(COCO_VERDE,18)
+COUVE_Prev<-Forcast(COUVE,19)
+COUVE_FLOR_Prev<-Forcast(COUVE_FLOR,20)
+GOIABA_Prev<-Forcast(GOIABA,21)
+INHAME_Prev<-Forcast(INHAME,22)
+JILO_Prev<-Forcast(JILO,23)
+LARANJA_PERA_Prev<-Forcast(LARANJA_PERA,24)
+LIMAO_TAHITI_Prev<-Forcast(LIMAO_TAHITI,25)
+MACA_Prev<-Forcast(MACA,26)
+MAMAO_FORMOSA_Prev<-Forcast(MAMAO_FORMOSA,27)
+MAMAO_HAWAY_Prev<-Forcast(MAMAO_HAWAY,28)
+MANDIOCA_Prev<-Forcast(MANDIOCA,29)
+MANDIOQUINHA_Prev<-Forcast(MANDIOQUINHA,30)
+MANGA_Prev<-Forcast(MANGA,31)
+MARACUJA_AZEDO_Prev<-Forcast(MARACUJA_AZEDO,32)
+MELANCIA_Prev<-Forcast(MELANCIA,33)
+MELAO_AMARELO_Prev<-Forcast(MELAO_AMARELO,34)
+MILHO_VERDE_Prev<-Forcast(MILHO_VERDE,35)
+MORANGO_Prev<-Forcast(MORANGO,36)
+OVOS_Prev<-Forcast(OVOS,37)
+PEPINO_Prev<-Forcast(PEPINO,38)
+PERA_IMPORTADA_Prev<-Forcast(PERA_IMPORTADA,39)
+PIMENTAO_VERDE_Prev<-Forcast(PIMENTAO_VERDE,40)
+QUIABO_Prev<-Forcast(QUIABO,41)
+REPOLHO_Prev<-Forcast(REPOLHO,42)
+TANGERINA_Prev<-Forcast(TANGERINA,43)
+TOMATE_Prev<-Forcast(TOMATE,44)
+UVA_ITALIA_Prev<-Forcast(UVA_ITALIA,45)
+UVA_NIAGARA_Prev<-Forcast(UVA_NIAGARA,46)
+VAGEM_Prev<-Forcast(VAGEM,47)
