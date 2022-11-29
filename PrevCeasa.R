@@ -7,6 +7,8 @@ library(readxl)
 library(parsnip)
 library(datawizard)
 library(easystats)
+library(future)
+library(doFuture)
 
 Dados_Ceasa_Preco <- read_excel("E:/edime/Thalis/MEU/Ceasa/Dados_Ceasa_Preco.xlsx", 
                                 col_types = c("text", "text", "text", 
@@ -55,7 +57,9 @@ EDA <- function(data,id_i){
   
 }
 
-EDA(data,24)
+EDA(data,1)[[1]]
+EDA(data,1)[[2]]
+EDA(data,1)[[3]]
 
 ##### models -----
 
@@ -77,26 +81,42 @@ splits <- df %>% initial_time_split(prop = 0.88)
   
   ## NNETAR (Neural Network AutoRegression) ----
   
-  model_fit_nnetar <- nnetar_reg(num_networks = 33,penalty = 0.1337) %>%
-    set_engine("nnetar") %>%
-    fit(value ~ date + month(date) + year(date) + semester(date), training(splits))
+  model_fit_nnetar <- nnetar_reg(num_networks = 15 ,penalty = 0.176) %>%
+     set_engine("nnetar") %>%
+     fit(value ~ date + semester(date), training(splits))
 
   ## Prophet ----
   
   model_fit_prophet <- prophet_boost(seasonality_daily = T ,
+                                     seasonality_weekly = T,
                                      growth = 'linear',
-                                     seasonality_yearly = F,changepoint_range = 0.77
+                                     seasonality_yearly = F,
+                                     trees = 500,
+                                     learn_rate = 0.550,
+                                     mtry = 1.9,
+                                     prior_scale_seasonality = 0.452,
+                                    changepoint_range = 0.95
                                       ) %>%
     set_engine("prophet_xgboost")  %>%
     fit(value ~ date + month(date) + day(date) + semester(date) +year(date), training(splits))
-
-
+  
+  model_fit_prophet_error <- prophet_reg(seasonality_daily = T,
+                                        seasonality_weekly = T,
+                                        seasonality_yearly = F,
+                                        growth = 'linear',
+                                        changepoint_num = 2.5,
+                                        changepoint_range = 0.90,
+                                        prior_scale_changepoints = 2.5,
+                                        prior_scale_seasonality = 0.90) %>% 
+    set_engine("prophet") %>% 
+    fit(value ~ date + semester(date), training(splits))
   
   # Avaliação ----
   
   model_table <- modeltime_table(
+    model_fit_prophet,
     model_fit_nnetar,
-    model_fit_prophet
+    model_fit_prophet_error
   )
   
 calibration_table <- model_table %>%
