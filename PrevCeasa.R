@@ -1,24 +1,21 @@
-library(tidymodels)
-library(modeltime)
-library(tidyverse)
-library(lubridate)
-library(timetk)
-library(readxl)
-library(parsnip)
-library(datawizard)
-library(easystats)
-library(future)
-library(doFuture)
+library(pacman)
+pacman::p_load(readxl,# Open Data in Xl (Excel)
+               plotly, # Making dynamic graphs
+               tidymodels, # Model statistics
+               bayesmodels, # Bayes times models 
+               modeltime, # Times model classics 
+               tidyverse, # All tidy for manipulation
+               timetk, # Making a tables and graph's of timeseries
+               lubridate, # Working if date
+               datawizard, # making a spells on the datas.
+               plyr,
+               modeltime,
+               easystats)
 
 Dados_Ceasa_Preco <- read_excel("E:/edime/Thalis/MEU/Ceasa/Dados_Ceasa_Preco.xlsx", 
-                                col_types = c("text", "text", "text", 
-                                              "skip", "skip", "skip", "numeric", 
-                                              "date"))
+                                col_types = c("text", "text", "text", "numeric", "date"))
 
-data <- Dados_Ceasa_Preco %>% dplyr::select(id,date,value) %>%
-  set_names(c("id", "date", "value"))
-
-#47
+data <- Dados_Ceasa_Preco %>% dplyr::select(id,date,value)
 
 # AED -----
 
@@ -49,17 +46,35 @@ EDA <- function(data,id_i){
                                             value,
                                             .facet_ncol = x)
   
+  acf <- dt %>% plot_acf_diagnostics(
+    date, value,               # ACF & PACF
+    .lags = "30 days",          # 7-Days of hourly lags
+    .interactive = FALSE
+  )
+  
+ seasonal <- dt %>% plot_seasonal_diagnostics(date, value, .interactive = T)
+ stl <- dt %>% plot_stl_diagnostics(  date, value,
+                        .feature_set = c("observed","season","trend","remainder"),
+                        .interactive = T)
+  
   return(list(
     table <- table,
-    garph <- graph,
-    anomaly <- anomaly
+    graph <- graph ,
+    anomaly <- anomaly ,
+    acf <- acf,
+    seasonal <- seasonal,
+    stl <- stl
   ))  
   
 }
 
-EDA(data,1)[[1]]
-EDA(data,1)[[2]]
-EDA(data,1)[[3]]
+EDA(data,24)[[1]]
+EDA(data,24)[[2]]
+EDA(data,24)[[3]]
+EDA(data,24)[[4]]
+EDA(data,24)[[5]]
+EDA(data,24)[[6]]
+
 
 ##### models -----
 
@@ -70,53 +85,45 @@ forecast_model <- function(product_id){
     dplyr::group_by(id) %>%
     dplyr::filter(id == product_id ) 
   
-  df <- df %>% ungroup() %>% select(-id)
-  
+  df <- df %>% ungroup() %>%  select(-id)
   # Separação ----
   
-splits <- df %>% initial_time_split(prop = 0.88)
+splits <- df %>% initial_time_split(prop = 0.90)
 
   
   # Ajuste ----
   
   ## NNETAR (Neural Network AutoRegression) ----
   
-  model_fit_nnetar <- nnetar_reg(num_networks = 15 ,penalty = 0.176) %>%
+  model_fit_nnetar <- nnetar_reg() %>%
      set_engine("nnetar") %>%
-     fit(value ~ date + semester(date), training(splits))
+     fit(value ~ date  + month(date,label = TRUE)+as.numeric(date), training(splits))
 
   ## Prophet ----
   
-  model_fit_prophet <- prophet_boost(seasonality_daily = T ,
+  model_fit_prophet <- prophet_boost(seasonality_daily = F,
                                      seasonality_weekly = T,
                                      growth = 'linear',
-                                     seasonality_yearly = F,
-                                     trees = 500,
-                                     learn_rate = 0.550,
-                                     mtry = 1.9,
-                                     prior_scale_seasonality = 0.452,
-                                    changepoint_range = 0.95
+                                     seasonality_yearly = F
                                       ) %>%
     set_engine("prophet_xgboost")  %>%
-    fit(value ~ date + month(date) + day(date) + semester(date) +year(date), training(splits))
+    fit(value ~ date + month(date ,label = TRUE)+as.numeric(date)+week(date), training(splits))
   
-  model_fit_prophet_error <- prophet_reg(seasonality_daily = T,
-                                        seasonality_weekly = T,
-                                        seasonality_yearly = F,
-                                        growth = 'linear',
-                                        changepoint_num = 2.5,
-                                        changepoint_range = 0.90,
-                                        prior_scale_changepoints = 2.5,
-                                        prior_scale_seasonality = 0.90) %>% 
-    set_engine("prophet") %>% 
-    fit(value ~ date + semester(date), training(splits))
+### Arima booster
+  model_fit_arima <- arima_boost( # XGBoost Args
+    tree_depth = 6,
+    learn_rate = 1.036) %>% 
+                  set_engine(engine = "arima_xgboost") %>% 
+    fit(value ~ date + month(date, label = TRUE)+as.numeric(date),
+        data = training(splits))
   
   # Avaliação ----
   
   model_table <- modeltime_table(
     model_fit_prophet,
     model_fit_nnetar,
-    model_fit_prophet_error
+    model_fit_arima
+    
   )
   
 calibration_table <- model_table %>%
@@ -144,12 +151,22 @@ accuracy <- calibration_table %>%
   table_modeltime_accuracy(.interactive = T)
   
 
+residuals_tb <- model_table %>%
+  modeltime_calibrate(new_data = testing(splits)) %>%
+  modeltime_residuals()
+
+residuals <- residuals_tb %>% plot_modeltime_residuals()
+
 return(list(model_table,
             calibration_table,
             value_table,
             graph,
-            accuracy))
+            accuracy,
+            residuals))
 }
+
+
+
 
 ABACATE<-forecast_model(1)
 ABACAXI<-forecast_model(2)
@@ -198,7 +215,6 @@ TOMATE<-forecast_model(44)
 UVA_ITALIA<-forecast_model(45)
 UVA_NIAGARA<-forecast_model(46)
 VAGEM<-forecast_model(47)
-
 
 
 Forcast <- function(Product,product_id){
@@ -275,3 +291,5 @@ TOMATE_Prev<-Forcast(TOMATE,44)
 UVA_ITALIA_Prev<-Forcast(UVA_ITALIA,45)
 UVA_NIAGARA_Prev<-Forcast(UVA_NIAGARA,46)
 VAGEM_Prev<-Forcast(VAGEM,47)
+
+

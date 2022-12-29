@@ -50,6 +50,7 @@ VAGEM[[4]]
 # vendo as previsões
 
 ABACATE_Prev[[3]]
+
 ABACAXI_Prev[[3]]
 ABOBORA_Prev[[3]]
 ABOBRINHA_Prev[[3]]
