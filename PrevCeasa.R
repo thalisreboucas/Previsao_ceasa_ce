@@ -112,7 +112,7 @@ splits <- df %>% initial_time_split(prop = 0.90)
 ### Arima booster
   model_fit_arima_bayes <- sarima_reg() %>%
     set_engine(engine = "stan") %>%
-    fit(value ~ date + month(date,label = TRUE)+as.numeric(date), data = training(splits))
+    fit(value ~ date + month(date,label = TRUE), data = training(splits))
   
   # Avaliação ----
   
