@@ -110,19 +110,16 @@ splits <- df %>% initial_time_split(prop = 0.90)
     fit(value ~ date + month(date ,label = TRUE)+as.numeric(date)+week(date), training(splits))
   
 ### Arima booster
-  model_fit_arima <- arima_boost( # XGBoost Args
-    tree_depth = 6,
-    learn_rate = 1.036) %>% 
-                  set_engine(engine = "arima_xgboost") %>% 
-    fit(value ~ date + month(date, label = TRUE)+as.numeric(date),
-        data = training(splits))
+  model_fit_arima_bayes <- sarima_reg() %>%
+    set_engine(engine = "stan") %>%
+    fit(value ~ date + month(date,label = TRUE)+as.numeric(date), data = training(splits))
   
   # Avaliação ----
   
   model_table <- modeltime_table(
     model_fit_prophet,
     model_fit_nnetar,
-    model_fit_arima
+    model_fit_arima_bayes
     
   )
   
@@ -162,9 +159,9 @@ return(list(model_table,
             value_table,
             graph,
             accuracy,
+            residuals_tb,
             residuals))
 }
-
 
 
 
@@ -230,7 +227,7 @@ refit_tbl <- Product[[2]] %>%
   modeltime_refit(data = df)
 
 value_prev <- refit_tbl %>%
-  modeltime_forecast(h = "6 month", actual_data = df)
+  modeltime_forecast(h = "8 month", actual_data = df)
 
 graph <- value_prev %>%
   plot_modeltime_forecast(
