@@ -10,7 +10,8 @@ pacman::p_load(readxl,# Open Data in Xl (Excel)
                datawizard, # making a spells on the datas.
                plyr,
                modeltime,
-               easystats)
+               rstanarm,
+               thief)
 
 Dados_Ceasa_Preco <- read_excel("E:/edime/Thalis/MEU/Ceasa/Dados_Ceasa_Preco.xlsx", 
                                 col_types = c("text", "text", "text", "numeric", "date"))
@@ -108,19 +109,13 @@ splits <- df %>% initial_time_split(prop = 0.90)
                                       ) %>%
     set_engine("prophet_xgboost")  %>%
     fit(value ~ date + month(date ,label = TRUE)+as.numeric(date)+week(date), training(splits))
-  
-### Arima booster
-  model_fit_arima_bayes <- sarima_reg() %>%
-    set_engine(engine = "stan") %>%
-    fit(value ~ date + month(date,label = TRUE), data = training(splits))
+
   
   # Avaliação ----
   
   model_table <- modeltime_table(
     model_fit_prophet,
-    model_fit_nnetar,
-    model_fit_arima_bayes
-    
+    model_fit_nnetar
   )
   
 calibration_table <- model_table %>%
