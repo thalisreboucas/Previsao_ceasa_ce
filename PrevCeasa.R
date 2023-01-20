@@ -10,8 +10,7 @@ pacman::p_load(readxl,# Open Data in Xl (Excel)
                datawizard, # making a spells on the datas.
                plyr,
                modeltime,
-               rstanarm,
-               thief)
+               rstanarm)
 
 Dados_Ceasa_Preco <- read_excel("E:/edime/Thalis/MEU/Ceasa/Dados_Ceasa_Preco.xlsx", 
                                 col_types = c("text", "text", "text", "numeric", "date"))
@@ -89,33 +88,50 @@ forecast_model <- function(product_id){
   df <- df %>% ungroup() %>%  select(-id)
   # Separação ----
   
-splits <- df %>% initial_time_split(prop = 0.90)
+splits <- df %>% initial_time_split(prop = 0.80)
 
   
   # Ajuste ----
   
   ## NNETAR (Neural Network AutoRegression) ----
   
-  model_fit_nnetar <- nnetar_reg() %>%
+  model_fit_nnetar <- nnetar_reg(num_networks = 50,
+                                 penalty = 1,
+                                 epochs = 5) %>%
      set_engine("nnetar") %>%
-     fit(value ~ date  + month(date,label = TRUE)+as.numeric(date), training(splits))
+     fit(value ~ date  + month(date,label = TRUE), training(splits))
 
-  ## Prophet ----
+  ## Prophet boost ----
   
   model_fit_prophet <- prophet_boost(seasonality_daily = F,
                                      seasonality_weekly = T,
                                      growth = 'linear',
-                                     seasonality_yearly = F
+                                     seasonality_yearly = F,
+                                     learn_rate = 0.3,
+                                     sample_size = 0.8,
+                                     mtry = 5,
+                                     trees = 10,
+                                     tree_depth = 500
                                       ) %>%
     set_engine("prophet_xgboost")  %>%
     fit(value ~ date + month(date ,label = TRUE)+as.numeric(date)+week(date), training(splits))
-
+ 
+   ## ARIMA boost ----
+  
+  model_fit_arima_boost <- arima_boost( tree_depth = 300,
+                                        mtry = 5,
+                                        sample_size = 0.8,
+                                        trees = 10,
+                                     learn_rate = 0.4) %>%
+    set_engine("arima_xgboost")  %>%
+    fit(value ~ date + month(date ,label = TRUE)+as.numeric(date)+week(date), training(splits))
   
   # Avaliação ----
   
   model_table <- modeltime_table(
     model_fit_prophet,
-    model_fit_nnetar
+    model_fit_nnetar,
+    model_fit_arima_boost
   )
   
 calibration_table <- model_table %>%
@@ -215,14 +231,19 @@ Forcast <- function(Product,product_id){
     dplyr::group_by(id) %>%
     dplyr::filter(id == product_id ) 
   
-  df <- df %>% ungroup() %>% select(-id)
-  
-  
 refit_tbl <- Product[[2]] %>%
   modeltime_refit(data = df)
 
+
+future_tbl <- df %>% group_by(id) %>% 
+  future_frame(.length_out = 180,.date_var = date)
+
+future_tbl <- future_tbl %>% ungroup() %>%  select(-id)
+df <-df %>% ungroup() %>%  select(-id)
+
+
 value_prev <- refit_tbl %>%
-  modeltime_forecast(h = "8 month", actual_data = df)
+  modeltime_forecast(new_data = future_tbl, actual_data = df)
 
 graph <- value_prev %>%
   plot_modeltime_forecast(
@@ -284,4 +305,10 @@ UVA_ITALIA_Prev<-Forcast(UVA_ITALIA,45)
 UVA_NIAGARA_Prev<-Forcast(UVA_NIAGARA,46)
 VAGEM_Prev<-Forcast(VAGEM,47)
 
+ABACATE_Prev[[3]]
 
+
+future_tbl <- data %>% group_by(id) %>% 
+  future_frame(.length_out = 26)
+
+future_tbl %>% view()
