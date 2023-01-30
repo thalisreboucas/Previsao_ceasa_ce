@@ -12,68 +12,6 @@ pacman::p_load(readxl,# Open Data in Xl (Excel)
                modeltime,
                rstanarm)
 
-Dados_Ceasa_Preco <- read_excel("E:/edime/Thalis/MEU/Ceasa/Dados_Ceasa_Preco.xlsx", 
-                                col_types = c("text", "text", "text", "numeric", "date"))
-
-data <- Dados_Ceasa_Preco %>% dplyr::select(id,date,value)
-
-# AED -----
-
-itens_abc <- c(24,8,27,34,44,33,16)
-
-EDA <- function(data,id_i){ 
-  dt <- data %>%
-    dplyr::group_by(id) %>%
-    dplyr::filter(id == id_i)
-  
-  n <- length(plyr::count(id_i)$x)
-  
-  if (n > 3) {
-    x = 3
-  } else {
-    x = 1
-  }
-  
-  graph <-  dt %>%
-    timetk::plot_time_series(.facet_ncol = x,
-                             .date_var    = date,
-                             .value       = value)
-  
-  
-  table <-  dt %>%  datawizard::describe_distribution()
-  
-  anomaly <- dt %>% plot_anomaly_diagnostics(date,
-                                            value,
-                                            .facet_ncol = x)
-  
-  acf <- dt %>% plot_acf_diagnostics(
-    date, value,               # ACF & PACF
-    .lags = "30 days",          # 7-Days of hourly lags
-    .interactive = FALSE
-  )
-  
- seasonal <- dt %>% plot_seasonal_diagnostics(date, value, .interactive = T)
- stl <- dt %>% plot_stl_diagnostics(  date, value,
-                        .feature_set = c("observed","season","trend","remainder"),
-                        .interactive = T)
-  
-  return(list(
-    table <- table,
-    graph <- graph ,
-    anomaly <- anomaly ,
-    acf <- acf,
-    seasonal <- seasonal,
-    stl <- stl
-  ))  
-  
-}
-
-EDA(data,24)[[1]]
-EDA(data,24)[[2]]
-EDA(data,24)[[3]]
-EDA(data,24)[[4]]
-EDA(data,24)[[5]]
-EDA(data,24)[[6]]
 
 
 ##### models -----
@@ -88,43 +26,42 @@ forecast_model <- function(product_id){
   df <- df %>% ungroup() %>%  select(-id)
   # Separação ----
   
-splits <- df %>% initial_time_split(prop = 0.80)
+splits <- df %>% initial_time_split(prop = 0.85)
 
   
   # Ajuste ----
   
   ## NNETAR (Neural Network AutoRegression) ----
   
-  model_fit_nnetar <- nnetar_reg(num_networks = 50,
-                                 penalty = 1,
-                                 epochs = 5) %>%
+  model_fit_nnetar <- nnetar_reg(epochs = 10,
+                                 num_networks =100 ,
+                                 penalty = -0.2) %>%
      set_engine("nnetar") %>%
-     fit(value ~ date  + month(date,label = TRUE), training(splits))
+     fit(value ~ date  + month(date,label = TRUE)+week(date)+day(date)+year(date), training(splits))
 
   ## Prophet boost ----
   
-  model_fit_prophet <- prophet_boost(seasonality_daily = F,
-                                     seasonality_weekly = T,
+  model_fit_prophet <- prophet_boost(seasonality_daily = T,
+                                     seasonality_weekly = F,
                                      growth = 'linear',
-                                     seasonality_yearly = F,
-                                     learn_rate = 0.3,
-                                     sample_size = 0.8,
+                                     seasonality_yearly = T,
+                                     learn_rate = 0.1,
                                      mtry = 5,
                                      trees = 10,
-                                     tree_depth = 500
+                                     tree_depth = 550
                                       ) %>%
     set_engine("prophet_xgboost")  %>%
-    fit(value ~ date + month(date ,label = TRUE)+as.numeric(date)+week(date), training(splits))
+    fit(value ~ date + month(date ,label = TRUE)+week(date)+day(date)+year(date), training(splits))
  
    ## ARIMA boost ----
   
-  model_fit_arima_boost <- arima_boost( tree_depth = 300,
+  model_fit_arima_boost <- arima_boost( tree_depth = 550,
+                                        min_n = 2,
                                         mtry = 5,
-                                        sample_size = 0.8,
                                         trees = 10,
-                                     learn_rate = 0.4) %>%
+                                     learn_rate = 0.1) %>%
     set_engine("arima_xgboost")  %>%
-    fit(value ~ date + month(date ,label = TRUE)+as.numeric(date)+week(date), training(splits))
+    fit(value ~ date + month(date ,label = TRUE)+week(date)+day(date)+year(date), training(splits))
   
   # Avaliação ----
   
@@ -305,7 +242,6 @@ UVA_ITALIA_Prev<-Forcast(UVA_ITALIA,45)
 UVA_NIAGARA_Prev<-Forcast(UVA_NIAGARA,46)
 VAGEM_Prev<-Forcast(VAGEM,47)
 
-ABACATE_Prev[[3]]
 
 
 future_tbl <- data %>% group_by(id) %>% 
