@@ -36,7 +36,7 @@ splits <- df %>% initial_time_split(prop = 0.85)
   model_fit_nnetar <- nnetar_reg(epochs = 10,
                                  num_networks =50) %>%
      set_engine("nnetar") %>%
-     fit(value ~ date + month(date,label = TRUE ) +week(date)+ value_comp , training(splits))
+     fit(value ~ date + month(date,label = TRUE ) + week(date)+ year(date) + value_comp , training(splits))
 
   ## Prophet boost ----
   
@@ -55,11 +55,11 @@ splits <- df %>% initial_time_split(prop = 0.85)
    ## ARIMA boost ----
   
   model_fit_arima_boost <- arima_boost( tree_depth = 550,
-                                        mtry = 6,
-                                        trees = 12,
-                                     learn_rate = 0.4) %>%
+                                        mtry = 5,
+                                        trees = 10,
+                                     learn_rate = 0.3) %>%
     set_engine("arima_xgboost")  %>%
-    fit(value ~ date + month(date,label = TRUE) + week(date) + value_comp +  temperature + precipitation , training(splits))
+    fit(value ~ date + month(date,label = TRUE)  + value_comp +  temperature + precipitation , training(splits))
   
   # Avaliação ----
   
