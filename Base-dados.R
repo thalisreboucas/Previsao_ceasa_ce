@@ -16,32 +16,53 @@ pacman::p_load(readxl,# Open Data in Xl (Excel)
 Dados_Ceasa_Preco <- read_excel("E:/edime/Thalis/MEU/Ceasa/Dados_Ceasa_Preco.xlsx", 
                                 col_types = c("text", "text", "text", "numeric", "date"))
 
-
+# Base dos preços dos combustiveis (foco no DIESEL S10)
 ANPCOMBUSTIVEL_2015_2022 <- read_excel("E:/edime/Thalis/MEU/Ceasa/Base-explicativas/ANPCOMBUSTIVEL -2015-2022.xlsx", 
                                        col_types = c("text", "text", "text", 
                                                      "text", "text", "text", "text", "text", 
                                                      "text", "text", "text", "date", "numeric", 
                                                      "text", "text"))
 
-
-
+# Base de preciptação 
+INMENT_FORTALEZA_2015_2022 <- read_excel("Base-explicativas/INMENT-FORTALEZA-2015-2022.xlsx", 
+                                         col_types = c("date", "date", "numeric", 
+                                                       "numeric", "numeric", "numeric", 
+                                                       "numeric", "numeric", "numeric", 
+                                                       "numeric", "numeric", "numeric", 
+                                                       "numeric", "numeric", "numeric", 
+                                                       "numeric", "numeric", "numeric", 
+                                                       "numeric"))
 
 # Data ceasa
 data <- Dados_Ceasa_Preco  %>% dplyr::select(id,date,value)
 
+remove(Dados_Ceasa_Preco)
+
 # Data combustivel
-
 data_combustivel <- ANPCOMBUSTIVEL_2015_2022 %>% 
-              dplyr::select(Municipio,Produto,`Data da Coleta`,`Valor de Venda`) %>% 
+              dplyr::mutate(date = date(`Data da Coleta`),value = `Valor de Venda`) %>% 
               dplyr::filter(Municipio == "FORTALEZA",Produto == "DIESEL S10") %>% 
-              dplyr::mutate(date = `Data da Coleta`,value = `Valor de Venda`) %>% 
-              dplyr::select(-`Data da Coleta`,-`Valor de Venda`) 
+              dplyr::select(Municipio,Produto,date,value) %>% 
+              dplyr::group_by(date) %>% 
+              dplyr::summarise(value = mean(value))
+
+remove(ANPCOMBUSTIVEL_2015_2022)
+  
+
+# Data tempo
+data_temp <- INMENT_FORTALEZA_2015_2022 %>% 
+              dplyr::mutate(date = date(`DATA (YYYY-MM-DD)`),
+                            precipitation = `PRECIPITAÇÃO TOTAL, HORÁRIO (mm)`,
+                            temperature =`TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)` ) %>% 
+              dplyr::select(date,
+                            precipitation,
+                             temperature) %>% 
+              dplyr::group_by(date) %>% 
+              dplyr::summarise(precipitation = sum(precipitation) , temperature = mean(temperature))
 
 
+remove(INMENT_FORTALEZA_2015_2022)
 
-data_combustivel %>% 
-dplyr::select()
-left_join()
 
 # AED CEASA -----
 
