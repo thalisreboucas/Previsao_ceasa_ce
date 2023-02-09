@@ -10,68 +10,105 @@ pacman::p_load(readxl,# Open Data in Xl (Excel)
                datawizard, # making a spells on the datas.
                plyr,
                modeltime,
-               easystats)
+               imputeTS,
+               rstanarm)
 
-library(feasts)
-Dados_Ceasa_Preco <- read_excel("E:/edime/Thalis/MEU/Ceasa/Dados_Ceasa_Preco.xlsx", 
-                                col_types = c("text", "text", "text", "numeric", "date"))
 
-# Deixando os dados do formato que eu preciso
-data <- Dados_Ceasa_Preco %>% dplyr::select(id,date,value) 
+nested_data_tbl <- data %>%
+  extend_timeseries(
+    .id_var        = id,
+    .date_var      = date,
+    .length_future = 180
+  ) %>%
+  
+  nest_timeseries(
+    .id_var        = id,
+    .length_future = 180,
+    .length_actual = 180*2
+  ) %>%
+  split_nested_timeseries(
+    .length_test = 180
+  )
 
-############ Vendo a variancao de um ano (1 year)
-data %>% filter(id == 1 ) %>% plot_time_series_boxplot(date,value ,.period = "1 year")
 
-# Fazendo a regressão da serie temporal
-data %>% filter(id == 1 ) %>%  plot_time_series_regression(
-  .date_var     = date,
-  .formula      = value ~ date + month(date, label = TRUE)
+##################################################
+
+rec_prophet <- recipe(value ~ . , extract_nested_train_split(nested_data_tbl))  %>% 
+  timetk::step_timeseries_signature(date) %>% 
+  step_rm() %>%
+  step_zv(all_predictors())
+
+wflw_prophet <- workflow() %>%
+  add_model(prophet_boost(seasonality_daily = T,
+                          seasonality_weekly = F,
+                          growth = 'linear',
+                          seasonality_yearly = T,
+                          learn_rate = 0.1,
+                          mtry = 5,
+                          trees = 10,
+                          tree_depth = 850
+  ) %>%
+    set_engine("prophet_xgboost")
+  ) %>%
+  add_recipe(rec_prophet)
+
+
+
+rec_arima <- recipe(value ~ . , 
+                    extract_nested_train_split(nested_data_tbl))  %>% 
+                    timetk::step_timeseries_signature(date) %>% 
+                    step_rm() %>%
+                    step_zv(all_predictors())
+
+wflw_arima <- workflow() %>%
+  add_model(arima_boost(learn_rate = 0.3,
+                        mtry = 5,
+                        trees = 12,
+                        tree_depth = 850
+  ) %>%
+    set_engine("arima_xgboost")  
+  ) %>%
+  add_recipe(rec_arima)
+
+rec_nnetar <- recipe(value ~ date , 
+                     extract_nested_train_split(nested_data_tbl))  %>% 
+  timetk::step_timeseries_signature(date) 
+
+wflw_nnetar <- workflow() %>%
+  add_model(nnetar_reg(epochs = 10,
+                       num_networks =50) %>%
+              set_engine("nnetar")
+  ) %>% 
+  add_recipe(rec_nnetar)
+
+
+nested_modeltime_tbl <- modeltime_nested_fit(
+  # Nested data 
+  nested_data = nested_data_tbl,
+  
+  # Add workflows
+  wflw_prophet,
+  wflw_arima,
+  wflw_nnetar
 )
 
-############## Vendo o mes por ano 
-data %>% mutate(day = day(date),
-                month = month(date,label = T),
-                year = year(date),
-                week = week(date),
-                semester = semester(date),
-                quarter = quarter(date)) %>% 
-                filter(id == 24) %>% 
-                group_by(year) %>% 
-                plot_ly( x = ~month,y = ~value,color = ~as.character(year)) %>% 
-                add_lines(line = list(shape = "linear",width = 3))
+nested_modeltime_tbl %>% 
+  extract_nested_test_forecast() %>%
+  group_by(id) %>%
+  filter(id == 1) %>% 
+  plot_modeltime_forecast(  )
 
-################## vendo o dia por ano
-data %>% mutate(day = day(date),
-                year = year(date)) %>% 
-  filter(id == 24) %>% 
-  group_by(year) %>% 
-  plot_ly( x = ~day,y = ~value,color = ~as.character(year)) %>% 
-  add_lines(line = list(shape = "linear",width = 3))
+nested_modeltime_tbl %>% 
+  extract_nested_error_report()
 
-################## Vendo a semana por ano
-data %>% mutate(year = year(date),
-                week = week(date)) %>% 
-  filter(id == 24) %>% 
-  group_by(year) %>% 
-  plot_ly( x = ~week,y = ~value,color = ~as.character(year)) %>% 
-  add_lines(line = list(shape = "linear",width = 3))
-
-######## vendo o valor por quarto de ano
-data %>% mutate(day = day(date),
-                month = month(date,label = T),
-                year = year(date),
-                week = week(date),
-                semester = semester(date),
-                quarter = quarter(date)) %>% 
-  filter(id == 24) %>% 
-  group_by(year) %>% 
-  plot_ly( x = ~quarter,y = ~value,color = ~as.character(year)) %>% 
-  add_lines(line = list(shape = "linear",width = 3))
+nested_modeltime_refit_tbl <-   modeltime_nested_refit(object = nested_modeltime_tbl,
+    control = control_nested_refit(verbose = TRUE)
+  )
 
 
-####### Vendo se tem outliers 
-data %>% filter(id == 24 ) %>% plot_anomaly_diagnostics(date,value)
-
-####### vendo o acf
-data %>% filter(id == 24 ) %>% plot_acf_diagnostics(date,value)
-
+nested_modeltime_refit_tbl %>%
+  extract_nested_future_forecast() %>%
+  group_by(id) %>%
+  filter(id == 34 ) %>% 
+  plot_modeltime_forecast(
+  )
